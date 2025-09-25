@@ -127,6 +127,9 @@ export default function Page() {
       const sx = outW / w;
       const sy = outH / h;
 
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas context not available");
+
       ctx.fillStyle = canvasBg;
       ctx.fillRect(0, 0, outW, outH);
 
@@ -210,54 +213,75 @@ export default function Page() {
   const tmpCtx = tmpCanvas.getContext("2d")!;
 
   frames.forEach((frame) => {
-    // рисуем кадр
-    const { width: w, height: h, imageData } = frame;
-    tmpCtx.fillStyle = canvasBg;
-    tmpCtx.fillRect(0, 0, outW, outH);
-    tmpCtx.putImageData(imageData, 0, 0); // базовое изображение
+  const { width: w, height: h, imageData } = frame;
 
-    const cols = Math.ceil(w / blockSize);
-    const rows = Math.ceil(h / blockSize);
-    tmpCtx.textBaseline = "middle";
-    tmpCtx.textAlign = "center";
-    tmpCtx.font = `${Math.max(6, blockSize * scale)}px monospace`;
+  // создаём временный canvas для кадра
+  const tmpCanvas = document.createElement("canvas");
+  tmpCanvas.width = outW;
+  tmpCanvas.height = outH;
+  const tmpCtx = tmpCanvas.getContext("2d")!;
+  
+  // заливка фона
+  tmpCtx.fillStyle = canvasBg;
+  tmpCtx.fillRect(0, 0, outW, outH);
 
-    for (let by = 0; by < rows; by++) {
-      for (let bx = 0; bx < cols; bx++) {
-        const sxPix = Math.min(w - 1, Math.floor(bx * blockSize + blockSize / 2));
-        const syPix = Math.min(h - 1, Math.floor(by * blockSize + blockSize / 2));
-        const idx = (syPix * w + sxPix) * 4;
-        const pr = imageData.data[idx],
-          pg = imageData.data[idx + 1],
-          pb = imageData.data[idx + 2],
-          pa = imageData.data[idx + 3];
-        if (pa === 0) continue;
+  // рисуем исходное изображение
+  tmpCtx.putImageData(imageData, 0, 0);
 
-        let chosen: Layer | null = null;
-        for (let li = layersRGB.length - 1; li >= 0; li--) {
-          const lay = layersRGB[li];
-          if (!lay.visible || lay.id === -1) continue;
-          const dist = colorDistance([pr, pg, pb], lay.rgb as [number, number, number]);
-          if (dist <= lay.spread) {
-            chosen = lay;
-            break;
-          }
-        }
+  const cols = Math.ceil(w / blockSize);
+  const rows = Math.ceil(h / blockSize);
 
-        if (chosen) {
-          const cx = (bx * blockSize + blockSize / 2) * (outW / w);
-          const cy = (by * blockSize + blockSize / 2) * (outH / h);
-          tmpCtx.fillStyle = chosen.bg;
-          tmpCtx.fillRect(cx - (blockSize * (outW / w)) / 2, cy - (blockSize * (outH / h)) / 2, blockSize * (outW / w), blockSize * (outH / h));
-          tmpCtx.fillStyle = chosen.fg;
-          tmpCtx.fillText(chosen.symbol, cx, cy);
+  tmpCtx.textBaseline = "middle";
+  tmpCtx.textAlign = "center";
+  tmpCtx.font = `${Math.max(6, blockSize * scale)}px monospace`;
+
+  for (let by = 0; by < rows; by++) {
+    for (let bx = 0; bx < cols; bx++) {
+      const sxPix = Math.min(w - 1, Math.floor(bx * blockSize + blockSize / 2));
+      const syPix = Math.min(h - 1, Math.floor(by * blockSize + blockSize / 2));
+      const idx = (syPix * w + sxPix) * 4;
+
+      const pr = imageData.data[idx],
+            pg = imageData.data[idx + 1],
+            pb = imageData.data[idx + 2],
+            pa = imageData.data[idx + 3];
+
+      if (pa === 0) continue;
+
+      let chosen: Layer | null = null;
+      for (let li = layersRGB.length - 1; li >= 0; li--) {
+        const lay = layersRGB[li];
+        if (!lay.visible || lay.id === -1) continue;
+        const dist = colorDistance([pr, pg, pb], lay.rgb as [number, number, number]);
+        if (dist <= lay.spread) {
+          chosen = lay;
+          break;
         }
       }
-    }
 
-    const delay = (frame.delay || 100) / (speed / 10);
-    gif.addFrame(tmpCtx, { copy: true, delay });
-  });
+      if (chosen) {
+        const cx = (bx * blockSize + blockSize / 2) * (outW / w);
+        const cy = (by * blockSize + blockSize / 2) * (outH / h);
+
+        tmpCtx.fillStyle = chosen.bg;
+        tmpCtx.fillRect(
+          cx - (blockSize * (outW / w)) / 2,
+          cy - (blockSize * (outH / h)) / 2,
+          blockSize * (outW / w),
+          blockSize * (outH / h)
+        );
+
+        tmpCtx.fillStyle = chosen.fg;
+        tmpCtx.fillText(chosen.symbol, cx, cy);
+      }
+    }
+  }
+
+  const delay = (frame.delay || 100) / (speed / 10);
+
+  // Передаём сам canvas, а не ctx
+  gif.addFrame(tmpCanvas, { copy: true, delay });
+});
 
   gif.on("finished", (blob: Blob) => {
     saveAs(blob, "ascii.gif");
