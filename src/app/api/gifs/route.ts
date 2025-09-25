@@ -3,9 +3,11 @@ import { NextResponse } from "next/server";
 
 export async function GET() {
   try {
-    const { blobs } = await list({ prefix: "gifs/" });
+    const { blobs } = await list({
+      prefix: "gifs/",
+      token: process.env.VERCEL_BLOB_TOKEN,
+    });
 
-    // фильтруем только настоящие файлы (исключаем "gifs/")
     const urls = blobs
       .filter((b) => !b.pathname.endsWith("/"))
       .map((b) => b.url);
